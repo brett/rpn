@@ -26,24 +26,27 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include "rpn.h"
 
-int repeat = 1;
-extern int stackmode;
-extern int padcount;
+static const char *thiscmd;
+static void init_commands(void);
 
-static char *thiscmd;
-static struct macro *macrohead = NULL;
-extern int base, stop;
-extern struct metastack *M;
+static const char *err_msgs[] = {
+	[ERR_DIVBYZERO]  = "Division by zero.",
+	[ERR_DOMAIN]     = "Argument is outside of function domain.",
+	[ERR_UNKNOWNCMD] = "Unknown command.",
+	[ERR_ARGC]       = "Too few arguments.",
+	[ERR_RANGE]      = "Number out of range.",
+};
 
 void
-error(char *msg)
+error(enum rpn_err err)
 {
-	printf("Error: %s: %s\n", thiscmd, msg);
-	stop = 1;
+	printf("Error: %s: %s\n", thiscmd, err_msgs[err]);
+	S.stop = 1;
 }
 
 /*
@@ -53,24 +56,24 @@ error(char *msg)
 static void
 cmd_not(void)
 {
-	top()->num = !top()->num;
+	*topptr() = !*topptr();
 }
 
 static void
 cmd_ne(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num != tmpnum;
+	*topptr() = *topptr() != tmpnum;
 }
 
 static void
 cmd_mod(void)
 {
-	if (top()->num == 0)
+	if (*topptr() == 0)
 		error(ERR_DIVBYZERO);
 	else {
 		double tmpnum = popnum();
-		top()->num = fmod(top()->num, tmpnum);
+		*topptr() = fmod(*topptr(), tmpnum);
 	}
 }
 
@@ -78,57 +81,57 @@ static void
 cmd_bitand(void)
 {
 	double tmpnum = popnum();
-	top()->num = (unsigned long)top()->num & (unsigned long)tmpnum;
+	*topptr() = (uint64_t)*topptr() & (uint64_t)tmpnum;
 }
 
 static void
 cmd_and(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num && tmpnum;
+	*topptr() = *topptr() && tmpnum;
 }
 
 static void
 cmd_mul(void)
 {
 	double tmpnum = popnum();
-	top()->num *= tmpnum;
+	*topptr() *= tmpnum;
 }
 
 static void
 cmd_add(void)
 {
 	double tmpnum = popnum();
-	top()->num += tmpnum;
+	*topptr() += tmpnum;
 }
 
 static void
 cmd_inc(void)
 {
-	top()->num++;
+	(*topptr())++;
 }
 
 static void
 cmd_sub(void)
 {
 	double tmpnum = popnum();
-	top()->num -= tmpnum;
+	*topptr() -= tmpnum;
 }
 
 static void
 cmd_dec(void)
 {
-	top()->num--;
+	(*topptr())--;
 }
 
 static void
 cmd_div(void)
 {
-	if (top()->num == 0)
+	if (*topptr() == 0)
 		error(ERR_DIVBYZERO);
 	else {
 		double tmpnum = popnum();
-		top()->num /= tmpnum;
+		*topptr() /= tmpnum;
 	}
 }
 
@@ -136,112 +139,112 @@ static void
 cmd_lt(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num < tmpnum;
+	*topptr() = *topptr() < tmpnum;
 }
 
 static void
 cmd_bitshl(void)
 {
 	double tmpnum = popnum();
-	top()->num = (unsigned long)top()->num << (unsigned long)tmpnum;
+	*topptr() = (uint64_t)*topptr() << (uint64_t)tmpnum;
 }
 
 static void
 cmd_le(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num <= tmpnum;
+	*topptr() = *topptr() <= tmpnum;
 }
 
 static void
 cmd_eq(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num == tmpnum;
+	*topptr() = *topptr() == tmpnum;
 }
 
 static void
 cmd_gt(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num > tmpnum;
+	*topptr() = *topptr() > tmpnum;
 }
 
 static void
 cmd_ge(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num >= tmpnum;
+	*topptr() = *topptr() >= tmpnum;
 }
 
 static void
 cmd_bitshr(void)
 {
 	double tmpnum = popnum();
-	top()->num = (unsigned long)top()->num >> (unsigned long)tmpnum;
+	*topptr() = (uint64_t)*topptr() >> (uint64_t)tmpnum;
 }
 
 static void
 cmd_bitxor(void)
 {
 	double tmpnum = popnum();
-	top()->num = (unsigned long)top()->num ^ (unsigned long)tmpnum;
+	*topptr() = (uint64_t)*topptr() ^ (uint64_t)tmpnum;
 }
 
 /* Someday, this will be a macro */
 static void
 cmd_abs(void)
 {
-	if (top()->num < 0)
-		top()->num = -top()->num;
+	if (*topptr() < 0)
+		*topptr() = -*topptr();
 }
 
 static void
 cmd_acos(void)
 {
-	if (top()->num < -1 || top()->num > 1)
+	if (*topptr() < -1 || *topptr() > 1)
 		error(ERR_DOMAIN);
 	else
-		top()->num = acos(top()->num);
+		*topptr() = acos(*topptr());
 }
 
 static void
 cmd_asin(void)
 {
-	if (top()->num < -1 || top()->num > 1)
+	if (*topptr() < -1 || *topptr() > 1)
 		error(ERR_DOMAIN);
 	else
-		top()->num = asin(top()->num);
+		*topptr() = asin(*topptr());
 }
 
 static void
 cmd_atan(void)
 {
-	top()->num = atan(top()->num);
+	*topptr() = atan(*topptr());
 }
 
 static void
 cmd_ceil(void)
 {
-	top()->num = ceil(top()->num);
+	*topptr() = ceil(*topptr());
 }
 
 static void
 cmd_cos(void)
 {
-	top()->num = cos(top()->num);
+	*topptr() = cos(*topptr());
 }
 
 static void
 cmd_cosh(void)
 {
-	top()->num = cosh(top()->num);
+	*topptr() = cosh(*topptr());
 }
 
 static void
 cmd_depth(void)
 {
-	pushnum(M->d);
+	pushnum(S.M->d);
 }
 
 static void
@@ -270,18 +273,18 @@ cmd_htonl(void) {
 
 static void
 cmd_stack(void) {
-	stackmode = stackmode ? 0 : 1 ;
+	S.stackmode = S.stackmode ? 0 : 1 ;
 }
 
 static void
 cmd_pad(void) {
 	unsigned s = (unsigned) popnum();
-	padcount = s;
+	S.padcount = s;
 }
 
 static void
 cmd_ipaddr(void) {
-	unsigned addr = top()->num;
+	unsigned addr = *topptr();
 	pushnum(((u_char *)&addr)[0]);
 	pushnum(((u_char *)&addr)[1]);
 	pushnum(((u_char *)&addr)[2]);
@@ -291,7 +294,7 @@ cmd_ipaddr(void) {
 static void
 cmd_drop(void)
 {
-	free(pop());
+	popnum();
 }
 
 /* Someday, this will be a macro */
@@ -306,21 +309,18 @@ cmd_dropn(void)
 static void
 cmd_dup(void)
 {
-	pushnum(top()->num);
+	pushnum(*topptr());
 }
 
 /* Someday, this will be a macro */
 static void
 cmd_dupn(void)
 {
-	double tmpnum, tmpnum2;
-	struct object *obj;
-
-	tmpnum = tmpnum2 = popnum();
-	for (obj = top(); tmpnum > 1; obj = obj->next, tmpnum--)
-		;
-	for (; tmpnum2 > 0; obj = obj->prev, tmpnum2--)
-		pushnum(obj->num);
+	unsigned n = (unsigned)popnum();
+	size_t base_idx = S.M->d - n;
+	unsigned i;
+	for (i = 0; i < n; i++)
+		pushnum(S.M->data[base_idx + i]);
 }
 
 static void
@@ -332,7 +332,7 @@ cmd_e(void)
 static void
 cmd_exp(void)
 {
-	top()->num = exp(top()->num);
+	*topptr() = exp(*topptr());
 }
 
 /* Someday, this will be a macro */
@@ -340,70 +340,70 @@ static void
 cmd_fact(void)
 {
 	double tmpnum;
-	if (top()->num < 0 || modf(top()->num, &tmpnum) != 0)
+	if (*topptr() < 0 || modf(*topptr(), &tmpnum) != 0)
 		error(ERR_DOMAIN);
-	else if (top()->num == 0)
-		top()->num = 1;
+	else if (*topptr() == 0)
+		*topptr() = 1;
 	else
-		for (tmpnum = top()->num, top()->num = 1; tmpnum > 1; tmpnum--)
-			top()->num *= tmpnum;
+		for (tmpnum = *topptr(), *topptr() = 1; tmpnum > 1; tmpnum--)
+			*topptr() *= tmpnum;
 }
 
 static void
 cmd_floor(void)
 {
-	top()->num = floor(top()->num);
+	*topptr() = floor(*topptr());
 }
 
 static void
 cmd_fp(void)
 {
 	double tmpnum;
-	top()->num = modf(top()->num, &tmpnum);
+	*topptr() = modf(*topptr(), &tmpnum);
 }
 
 static void
 cmd_getbase(void)
 {
-	pushnum(base);
+	pushnum(S.base);
 }
 
 static void
 cmd_ip(void)
 {
-	modf(top()->num, &top()->num);
+	modf(*topptr(), topptr());
 }
 
 static void
 cmd_ln(void)
 {
-	if (top()->num < 0)
+	if (*topptr() < 0)
 		error(ERR_DOMAIN);
 	else
-		top()->num = log(top()->num);
+		*topptr() = log(*topptr());
 }
 
 static void
 cmd_log(void)
 {
-	if (top()->num < 0)
+	if (*topptr() < 0)
 		error(ERR_DOMAIN);
 	else
-		top()->num = log10(top()->num);
+		*topptr() = log10(*topptr());
 }
 
 /* Someday, this will be a macro */
 static void
 cmd_max(void)
 {
-	popobj(top()->num > top()->next->num ? top()->next : top());
+	removenth(*topptr() > *nthptr(1) ? 1 : 0);
 }
 
 /* Someday, this will be a macro */
 static void
 cmd_min(void)
 {
-	popobj(top()->num < top()->next->num ? top()->next : top());
+	removenth(*topptr() < *nthptr(1) ? 1 : 0);
 }
 
 static void
@@ -415,30 +415,27 @@ cmd_pi(void)
 static void
 cmd_pick_roll(void)
 {
-	double tmpnum;
-	struct object *obj;
+	unsigned n = (unsigned)popnum();
 
-	if ((tmpnum = popnum()) == 0)
+	if (n == 0)
 		return;
 
-	for (obj = top(); tmpnum > 1; obj = obj->next, tmpnum--)
-		;
-	pushnum(obj->num);
+	pushnum(*nthptr(n - 1));
 
 	if (strcmp(thiscmd, "roll") == 0)
-		popobj(obj);
+		removenth(n);
 }
 
 static void
 cmd_pow(void)
 {
 	double tmpnum;
-	if ((top()->next->num == 0 && top()->num <= 0) ||
-	    (top()->next->num < 0 && modf(top()->num, &tmpnum) != 0))
+	if ((*nthptr(1) == 0 && *topptr() <= 0) ||
+	    (*nthptr(1) < 0 && modf(*topptr(), &tmpnum) != 0))
 		error(ERR_DOMAIN);
 	else {
 		tmpnum = popnum();
-		top()->num = pow(top()->num, tmpnum);
+		*topptr() = pow(*topptr(), tmpnum);
 	}
 }
 
@@ -457,33 +454,23 @@ cmd_rand(void)
 static void
 cmd_repeat(void)
 {
-	if (top()->num <= 0)
+	if (*topptr() <= 0)
 		error(ERR_DOMAIN);
 	else
-		repeat = popnum();
+		S.pending_repeat = popnum();
 }
 
 static void
 cmd_rolld(void)
 {
-	double tmpnum;
-	struct object *obj, *obj2;
+	unsigned n = (unsigned)popnum();
 
-	if ((tmpnum = popnum()) == 1)
+	if (n <= 1)
 		return;
 
-	for (obj = pop(), obj2 = top(); tmpnum > 2; obj2 = obj2->next, tmpnum--)
-		;
-	if (obj2 == M->b) {
-		M->b = obj;
-		obj->next = NULL;
-	} else {
-		obj2->next->prev = obj;
-		obj->next = obj2->next;
-	}
-	obj2->next = obj;
-	obj->prev = obj2;
-	M->d++;
+	double val = S.M->data[S.M->d - 1];
+	memmove(&S.M->data[S.M->d - n + 1], &S.M->data[S.M->d - n], (n - 1) * sizeof(double));
+	S.M->data[S.M->d - n] = val;
 }
 
 static void
@@ -493,50 +480,50 @@ cmd_setbase(void)
 	if (num < 2 || num > 36)
 		error(ERR_DOMAIN);
 	else
-		base = num;
+		S.base = num;
 }
 
 /* Someday, this will be a macro */
 static void
 cmd_sign(void)
 {
-	if (top()->num)
-		top()->num = top()->num < 0 ? -1 : 1;
+	if (*topptr())
+		*topptr() = *topptr() < 0 ? -1 : 1;
 }
 
 static void
 cmd_sin(void)
 {
-	top()->num = sin(top()->num);
+	*topptr() = sin(*topptr());
 }
 
 static void
 cmd_sinh(void)
 {
-	top()->num = sinh(top()->num);
+	*topptr() = sinh(*topptr());
 }
 
 static void
 cmd_sqrt(void)
 {
-	if (top()->num < 0)
+	if (*topptr() < 0)
 		error(ERR_DOMAIN);
 	else
-		top()->num = sqrt(top()->num);
+		*topptr() = sqrt(*topptr());
 }
 
 static void
 cmd_swap(void)
 {
-	double tmpnum = top()->next->num;
-	top()->next->num = top()->num;
-	top()->num = tmpnum;
+	double tmpnum = *nthptr(1);
+	*nthptr(1) = *topptr();
+	*topptr() = tmpnum;
 }
 
 static void
 cmd_tanh(void)
 {
-	top()->num = tanh(top()->num);
+	*topptr() = tanh(*topptr());
 }
 
 static void
@@ -549,61 +536,66 @@ static void
 cmd_bitor(void)
 {
 	double tmpnum = popnum();
-	top()->num = (unsigned long)top()->num | (unsigned long)tmpnum;
+	*topptr() = (uint64_t)*topptr() | (uint64_t)tmpnum;
 }
 
 static void
 cmd_or(void)
 {
 	double tmpnum = popnum();
-	top()->num = top()->num || tmpnum;
+	*topptr() = *topptr() || tmpnum;
 }
 
 static void
 cmd_bitcmpl(void)
 {
-	top()->num = ~(unsigned long)top()->num;
+	*topptr() = ~(uint64_t)*topptr();
 }
+
+/*
+ * Hash table infrastructure (djb2, open addressing, power-of-2 size)
+ */
+static unsigned
+djb2(const char *str)
+{
+	unsigned hash = 5381;
+	int c;
+	while ((c = *str++))
+		hash = ((hash << 5) + hash) + c;
+	return hash;
+}
+
+/*
+ * Macro hash table
+ */
+#define MACRO_HT_SIZE 256
+static struct macro macro_ht[MACRO_HT_SIZE];
 
 static void
 addmacro(char *name, char *operation)
 {
-	struct macro *macro, *ptrtmp;
-
-	for (ptrtmp = macrohead; ptrtmp != NULL; ptrtmp = ptrtmp->next) {
-		if (strcmp(name, ptrtmp->name) == 0) {
-			ptrtmp->operation = operation;
+	unsigned idx = djb2(name) & (MACRO_HT_SIZE - 1);
+	while (macro_ht[idx].occupied) {
+		if (strcmp(macro_ht[idx].name, name) == 0) {
+			macro_ht[idx].operation = operation;
 			return;
 		}
+		idx = (idx + 1) & (MACRO_HT_SIZE - 1);
 	}
-
-	if ((macro = malloc(sizeof *macro)) == NULL) {
-		perror("Error: malloc");
-		exit(1);
-	}
-	macro->name = name;
-	macro->operation = operation;
-
-	if (macrohead == NULL) {
-		macrohead = macro;
-		macrohead->prev = macrohead->next = NULL;
-	} else {
-		macrohead->prev = macro;
-		macro->next = macrohead;
-		macrohead = macro;
-		macrohead->prev = NULL;
-	}
+	macro_ht[idx].name = name;
+	macro_ht[idx].operation = operation;
+	macro_ht[idx].occupied = 1;
 }
 
 char *
-findmacro(char *name)
+findmacro(const char *name)
 {
-	struct macro *macro;
-
-	for (macro = macrohead; macro != NULL; macro = macro->next)
-		if (strcmp(macro->name, name) == 0)
-			return macro->operation;
-
+	unsigned idx = djb2(name) & (MACRO_HT_SIZE - 1);
+	while (macro_ht[idx].occupied) {
+		if (strcmp(macro_ht[idx].name, name) == 0)
+			return macro_ht[idx].operation;
+		idx = (idx + 1) & (MACRO_HT_SIZE - 1);
+	}
 	return NULL;
 }
 
@@ -611,6 +603,8 @@ void
 init_macros(void)
 {
 	char *env = getenv("HOME");
+
+	init_commands();
 
 	addmacro("total", "depth -- repeat +");
 	addmacro("tan", "dup sin swap cos /");
@@ -656,171 +650,175 @@ init_macros(void)
 					addmacro(strdup(buf), strdup(p));
 				}
 			}
+			fclose(fp);
 		}
 	}
 }
 
 /*
- * commands[] is sorted for the binary search in findcmd().
+ * Command hash table
  */
+#define CMD_HT_SIZE 256
+
+struct cmd_slot {
+	struct command cmd;
+	int occupied;
+};
+
+static struct cmd_slot cmd_ht[CMD_HT_SIZE];
 
 static void cmd_help(void);
-static struct command _commands[] = {
-	{ "!",		1,	cmd_not		},
-	{ "!=",		2,	cmd_ne		},
-	{ "%",		2,	cmd_mod		},
-	{ "&",		2,	cmd_bitand	},
-	{ "&&",		2,	cmd_and		},
-	{ "*",		2,	cmd_mul		},
-	{ "+",		2,	cmd_add		},
-	{ "++",		1,	cmd_inc		},
-	{ "-",		2,	cmd_sub		},
-	{ "--",		1,	cmd_dec		},
-	{ "/",		2,	cmd_div		},
-	{ "<",		2,	cmd_lt		},
-	{ "<<",		2,	cmd_bitshl	},
-	{ "<=",		2,	cmd_le		},
-	{ "==",		2,	cmd_eq		},
-	{ ">",		2,	cmd_gt		},
-	{ ">=",		2,	cmd_ge		},
-	{ ">>",		2,	cmd_bitshr	},
-	{ "^",		2,	cmd_bitxor	},
-	{ "abs",	1,	cmd_abs		},
-	{ "acos",	1,	cmd_acos	},
-	{ "asin",	1,	cmd_asin	},
-	{ "atan",	1,	cmd_atan	},
-	{ "ceil",	1,	cmd_ceil	},
-	{ "cos",	1,	cmd_cos		},
-	{ "cosh",	1,	cmd_cosh	},
-	{ "depth",	0,	cmd_depth	},
-	{ "drop",	1,	cmd_drop	},
-	{ "dropn",	-1,	cmd_dropn	},
-	{ "dup",	1,	cmd_dup		},
-	{ "dupn",	-1,	cmd_dupn	},
-	{ "e",		0,	cmd_e		},
-	{ "exp",	1,	cmd_exp		},
-	{ "fact",	1,	cmd_fact	},
-	{ "floor",	1,	cmd_floor	},
-	{ "fp",		1,	cmd_fp		},
-	{ "getbase",	0,	cmd_getbase	},
-	{ "help",	0,	cmd_help	},
-	{ "hnl",	1, 	cmd_htonl	},
-	{ "hns",	1, 	cmd_htons	},
-	{ "ip",		1,	cmd_ip		},
-	{ "ipaddr",	1,	cmd_ipaddr	},
-	{ "ln",		1,	cmd_ln		},
-	{ "log",	1,	cmd_log		},
-	{ "max",	2,	cmd_max		},
-	{ "min",	2,	cmd_min		},
-	{ "nhl",	1, 	cmd_ntohl	},
-	{ "nhs",	1, 	cmd_ntohs	},
-	{ "pad",	1,	cmd_pad		},
-	{ "pi",		0,	cmd_pi		},
-	{ "pick",	-1,	cmd_pick_roll	},
-	{ "pow",	2,	cmd_pow		},
-	{ "quit",	0,	cmd_quit	},
-	{ "rand",	0,	cmd_rand	},
-	{ "repeat",	1,	cmd_repeat	},
-	{ "roll",	-1,	cmd_pick_roll	},
-	{ "rolld",	-1,	cmd_rolld	},
-	{ "setbase",	1,	cmd_setbase	},
-	{ "sign",	1,	cmd_sign	},
-	{ "sin",	1,	cmd_sin		},
-	{ "sinh",	1,	cmd_sinh	},
-	{ "sqrt",	1,	cmd_sqrt	},
-	{ "stack",	0,      cmd_stack	},
-	{ "swap",	2,	cmd_swap	},
-	{ "tanh",	1,	cmd_tanh	},
-	{ "version",	0,	cmd_version	},
-	{ "|",		2,	cmd_bitor	},
-	{ "||",		2,	cmd_or		},
-	{ "~",		1,	cmd_bitcmpl	}
-};
-#define NUMCMDS (sizeof _commands / sizeof *_commands)
-static struct command *commands = _commands;
-static size_t numcmds = NUMCMDS;
-static size_t roomcmds = 0;
+
+static void
+cmd_ht_insert(const char *name, long numargs, void (*function)(void))
+{
+	unsigned idx = djb2(name) & (CMD_HT_SIZE - 1);
+	while (cmd_ht[idx].occupied) {
+		if (strcmp(cmd_ht[idx].cmd.name, name) == 0) {
+			cmd_ht[idx].cmd.numargs = numargs;
+			cmd_ht[idx].cmd.function = function;
+			return;
+		}
+		idx = (idx + 1) & (CMD_HT_SIZE - 1);
+	}
+	cmd_ht[idx].cmd.name = name;
+	cmd_ht[idx].cmd.numargs = numargs;
+	cmd_ht[idx].cmd.function = function;
+	cmd_ht[idx].occupied = 1;
+}
+
+static void
+init_commands(void)
+{
+	cmd_ht_insert("!",	1,	cmd_not);
+	cmd_ht_insert("!=",	2,	cmd_ne);
+	cmd_ht_insert("%",	2,	cmd_mod);
+	cmd_ht_insert("&",	2,	cmd_bitand);
+	cmd_ht_insert("&&",	2,	cmd_and);
+	cmd_ht_insert("*",	2,	cmd_mul);
+	cmd_ht_insert("+",	2,	cmd_add);
+	cmd_ht_insert("++",	1,	cmd_inc);
+	cmd_ht_insert("-",	2,	cmd_sub);
+	cmd_ht_insert("--",	1,	cmd_dec);
+	cmd_ht_insert("/",	2,	cmd_div);
+	cmd_ht_insert("<",	2,	cmd_lt);
+	cmd_ht_insert("<<",	2,	cmd_bitshl);
+	cmd_ht_insert("<=",	2,	cmd_le);
+	cmd_ht_insert("==",	2,	cmd_eq);
+	cmd_ht_insert(">",	2,	cmd_gt);
+	cmd_ht_insert(">=",	2,	cmd_ge);
+	cmd_ht_insert(">>",	2,	cmd_bitshr);
+	cmd_ht_insert("^",	2,	cmd_bitxor);
+	cmd_ht_insert("abs",	1,	cmd_abs);
+	cmd_ht_insert("acos",	1,	cmd_acos);
+	cmd_ht_insert("asin",	1,	cmd_asin);
+	cmd_ht_insert("atan",	1,	cmd_atan);
+	cmd_ht_insert("ceil",	1,	cmd_ceil);
+	cmd_ht_insert("cos",	1,	cmd_cos);
+	cmd_ht_insert("cosh",	1,	cmd_cosh);
+	cmd_ht_insert("depth",	0,	cmd_depth);
+	cmd_ht_insert("drop",	1,	cmd_drop);
+	cmd_ht_insert("dropn",	-1,	cmd_dropn);
+	cmd_ht_insert("dup",	1,	cmd_dup);
+	cmd_ht_insert("dupn",	-1,	cmd_dupn);
+	cmd_ht_insert("e",	0,	cmd_e);
+	cmd_ht_insert("exp",	1,	cmd_exp);
+	cmd_ht_insert("fact",	1,	cmd_fact);
+	cmd_ht_insert("floor",	1,	cmd_floor);
+	cmd_ht_insert("fp",	1,	cmd_fp);
+	cmd_ht_insert("getbase",0,	cmd_getbase);
+	cmd_ht_insert("help",	0,	cmd_help);
+	cmd_ht_insert("hnl",	1,	cmd_htonl);
+	cmd_ht_insert("hns",	1,	cmd_htons);
+	cmd_ht_insert("ip",	1,	cmd_ip);
+	cmd_ht_insert("ipaddr",1,	cmd_ipaddr);
+	cmd_ht_insert("ln",	1,	cmd_ln);
+	cmd_ht_insert("log",	1,	cmd_log);
+	cmd_ht_insert("max",	2,	cmd_max);
+	cmd_ht_insert("min",	2,	cmd_min);
+	cmd_ht_insert("nhl",	1,	cmd_ntohl);
+	cmd_ht_insert("nhs",	1,	cmd_ntohs);
+	cmd_ht_insert("pad",	1,	cmd_pad);
+	cmd_ht_insert("pi",	0,	cmd_pi);
+	cmd_ht_insert("pick",	-1,	cmd_pick_roll);
+	cmd_ht_insert("pow",	2,	cmd_pow);
+	cmd_ht_insert("quit",	0,	cmd_quit);
+	cmd_ht_insert("rand",	0,	cmd_rand);
+	cmd_ht_insert("repeat",1,	cmd_repeat);
+	cmd_ht_insert("roll",	-1,	cmd_pick_roll);
+	cmd_ht_insert("rolld",	-1,	cmd_rolld);
+	cmd_ht_insert("setbase",1,	cmd_setbase);
+	cmd_ht_insert("sign",	1,	cmd_sign);
+	cmd_ht_insert("sin",	1,	cmd_sin);
+	cmd_ht_insert("sinh",	1,	cmd_sinh);
+	cmd_ht_insert("sqrt",	1,	cmd_sqrt);
+	cmd_ht_insert("stack",	0,	cmd_stack);
+	cmd_ht_insert("swap",	2,	cmd_swap);
+	cmd_ht_insert("tanh",	1,	cmd_tanh);
+	cmd_ht_insert("version",0,	cmd_version);
+	cmd_ht_insert("|",	2,	cmd_bitor);
+	cmd_ht_insert("||",	2,	cmd_or);
+	cmd_ht_insert("~",	1,	cmd_bitcmpl);
+}
 
 static void
 cmd_help(void)
 {
-	int x;
-	struct macro *macro;
+	size_t x, count;
 
 	puts("\nStandard commands:");
-	for (x = 0; x < NUMCMDS; x++) {
-		printf("%8s", commands[x].name);
-		if (x % 9 == 8)
+	for (x = 0, count = 0; x < CMD_HT_SIZE; x++) {
+		if (!cmd_ht[x].occupied)
+			continue;
+		printf("%8s", cmd_ht[x].cmd.name);
+		if (count++ % 9 == 8)
 			putchar('\n');
 	}
-	if (x % 9)
+	if (count % 9)
 		puts("\n");
 	else
 		putchar('\n');
 
-	if (macrohead != NULL) {
-		puts("Macros:");
-		for (macro = macrohead, x = 0; macro != NULL; macro = macro->next) {
-			if (macro->name[0] == '$')
-				continue;
-
-			printf("%8s", macro->name);
-			if (x++ % 9 == 8)
-				putchar('\n');
-		}
-		if (x % 9)
-			puts("\n");
-		else
+	puts("Macros:");
+	for (x = 0, count = 0; x < MACRO_HT_SIZE; x++) {
+		if (!macro_ht[x].occupied || macro_ht[x].name[0] == '$')
+			continue;
+		printf("%8s", macro_ht[x].name);
+		if (count++ % 9 == 8)
 			putchar('\n');
 	}
-}
-
-static int
-cmdcmp(const void *cmd, const void *cmdptr)
-{
-	return strcmp(((struct command *)cmd)->name, ((struct command *)cmdptr)->name);
-}
-
-static void
-cmdrefresh(void) {
-	qsort(commands, numcmds, sizeof *commands, cmdcmp);
+	if (count % 9)
+		puts("\n");
+	else
+		putchar('\n');
 }
 
 void
-addcommand(struct command *c) {
-	if (!roomcmds) {
-		struct command *ca = malloc((numcmds * 2) * sizeof *commands);
-		memcpy(ca, commands, numcmds * sizeof *commands);
-		if (commands != _commands)
-			free(commands);
-
-		commands = ca;
-		roomcmds = numcmds;
-	}
-
-	commands[numcmds] = *c;
-	numcmds++;
-	roomcmds--;
-	cmdrefresh();
+addcommand(struct command *c)
+{
+	cmd_ht_insert(c->name, c->numargs, c->function);
 }
 
 struct command *
-findcmd(char *cmd)
+findcmd(const char *cmd)
 {
-	struct command c;
-	c.name = cmd;
+	unsigned idx;
 	thiscmd = cmd;
-
-	return bsearch(&c, commands, numcmds, sizeof *commands, cmdcmp);
+	idx = djb2(cmd) & (CMD_HT_SIZE - 1);
+	while (cmd_ht[idx].occupied) {
+		if (strcmp(cmd_ht[idx].cmd.name, cmd) == 0)
+			return &cmd_ht[idx].cmd;
+		idx = (idx + 1) & (CMD_HT_SIZE - 1);
+	}
+	return NULL;
 }
 
 void
 completion(const char *buf, linenoiseCompletions *lc)
 {
-	int x;
-	struct macro *macro;
+	size_t x;
 	char tmp[1000];
-	char *ptr = (char *)buf;
+	const char *ptr = buf;
 	size_t len = strlen(buf);
 	if (!len)
 		return;
@@ -830,21 +828,19 @@ completion(const char *buf, linenoiseCompletions *lc)
 		len = strlen(ptr);
 	}
 
-	for (x = 0; x < NUMCMDS; x++) {
-		if (!strncmp(ptr, commands[x].name, len)) {
-			snprintf(tmp, sizeof(tmp), "%.*s%s", (int)(strlen(buf) - strlen(ptr)), buf, commands[x].name);
+	for (x = 0; x < CMD_HT_SIZE; x++) {
+		if (cmd_ht[x].occupied && !strncmp(ptr, cmd_ht[x].cmd.name, len)) {
+			snprintf(tmp, sizeof(tmp), "%.*s%s", (int)(strlen(buf) - strlen(ptr)), buf, cmd_ht[x].cmd.name);
 			linenoiseAddCompletion(lc, tmp);
 		}
 	}
 
-	if (macrohead != NULL) {
-		for (macro = macrohead, x = 0; macro != NULL; macro = macro->next) {
-			if (macro->name[0] == '$')
-				continue;
-			if (!strncmp(ptr, macro->name, len)) {
-				snprintf(tmp, sizeof(tmp), "%.*s%s", (int)(strlen(buf) - strlen(ptr)), buf, macro->name);
-				linenoiseAddCompletion(lc, tmp);
-			}
+	for (x = 0; x < MACRO_HT_SIZE; x++) {
+		if (!macro_ht[x].occupied || macro_ht[x].name[0] == '$')
+			continue;
+		if (!strncmp(ptr, macro_ht[x].name, len)) {
+			snprintf(tmp, sizeof(tmp), "%.*s%s", (int)(strlen(buf) - strlen(ptr)), buf, macro_ht[x].name);
+			linenoiseAddCompletion(lc, tmp);
 		}
 	}
 }

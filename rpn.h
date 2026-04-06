@@ -6,26 +6,33 @@
 #define DEFBASE     10
 #define BASECHAR    '#'
 
-#define ERR_DIVBYZERO   "Division by zero."
-#define ERR_DOMAIN  "Argument is outside of function domain."
-#define ERR_UNKNOWNCMD  "Unknown command."
-#define ERR_ARGC    "Too few arguments."
+enum rpn_err {
+    ERR_DIVBYZERO,
+    ERR_DOMAIN,
+    ERR_UNKNOWNCMD,
+    ERR_ARGC,
+    ERR_RANGE
+};
+
+#define STACK_INIT_CAP  64
 
 struct metastack {
-    struct object *t;
-    struct object *b;
-    struct metastack *n;
+    double *data;
     size_t d;
+    size_t cap;
+    struct metastack *n;
 };
 
-struct object {
-    double num;
-    struct object *prev;
-    struct object *next;
+struct rpn_state {
+    struct metastack *M;
+    int base, stop, stackmode, padcount;
+    int pending_repeat;
 };
+
+extern struct rpn_state S;
 
 struct command {
-    char *name;
+    const char *name;
     long numargs;
     void (*function)(void);
 };
@@ -33,21 +40,17 @@ struct command {
 struct macro {
     char *name;
     char *operation;
-    struct macro *prev;
-    struct macro *next;
+    int occupied;
 };
 
 void addcommand(struct command *c);
 void completion(const char *, linenoiseCompletions *);
-unsigned countstack(void);
-void error(char *);
-struct command *findcmd(char *);
-char *findmacro(char *);
+void error(enum rpn_err);
+struct command *findcmd(const char *);
+char *findmacro(const char *);
 void init_macros(void);
-double peeknthnum(unsigned off);
-struct object *pop(void);
+double *topptr(void);
+double *nthptr(unsigned n);
 double popnum(void);
-void popobj(struct object *);
+void removenth(unsigned n);
 void pushnum(double);
-struct object *top(void);
-

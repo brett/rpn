@@ -5,125 +5,66 @@
 #include <string.h>
 #include <time.h>
 #include <limits.h>
+#include <stdint.h>
 #include <math.h>
 #include <sys/types.h>
-#include <assert.h>
 #include <unistd.h>
 #include "rpn.h"
 
-int base = DEFBASE, stop = 0;
-struct metastack *M = NULL;
-int stackmode = 0;
-int padcount = 0;
+struct rpn_state S = { .base = DEFBASE };
 
 static void process(char *);
 
-extern int repeat;
+double *
+topptr(void) {
+	return &S.M->data[S.M->d - 1];
+}
 
-struct object *
-top(void) {
-	return (M->t);
+double *
+nthptr(unsigned n) {
+	return &S.M->data[S.M->d - 1 - n];
 }
 
 static void
-push(struct object *obj)
+grow(void)
 {
-	if (M->t == NULL) {
-		M->t = M->b = obj;
-		M->t->prev = M->t->next = NULL;
-	} else {
-		M->t->prev = obj;
-		obj->next = M->t;
-		M->t = obj;
-		M->t->prev = NULL;
+	if (S.M->d >= S.M->cap) {
+		S.M->cap *= 2;
+		S.M->data = realloc(S.M->data, S.M->cap * sizeof(double));
+		if (S.M->data == NULL) {
+			perror("Error: realloc");
+			exit(1);
+		}
 	}
-	M->d++;
 }
 
 void
 pushnum(double num)
 {
-	struct object *obj;
-
-	if ((obj = malloc(sizeof *obj)) == NULL) {
-		perror("Error: malloc");
-		exit(1);
-	}
-	obj->num = num;
-	push(obj);
-}
-
-unsigned
-countstack(void)
-{
-	unsigned cnt = 0;
-	struct object *o = NULL;
-
-	for (o = top(); o; o = o->next)
-		cnt += 1;
-
-	return cnt;
-}
-
-struct object *
-pop(void)
-{
-	struct object *obj;
-
-	obj = M->t;
-	if ((M->t = M->t->next) != NULL)
-		M->t->prev = NULL;
-	else
-		M->b = NULL;
-	M->d--;
-	return obj;
-}
-
-double
-peeknthnum(unsigned off)
-{
-	struct object *o = top();
-
-	while (off--)
-		o = o->next;
-
-	return (o->num);
+	grow();
+	S.M->data[S.M->d++] = num;
 }
 
 double
 popnum(void)
 {
-	double num;
-	struct object *obj;
-
-	obj = pop();
-	num = obj->num;
-	free(obj);
-	return num;
+	return S.M->data[--S.M->d];
 }
 
 void
-popobj(struct object *obj)
+removenth(unsigned n)
 {
-	if (obj == top())
-		pop();
-	else {
-		if (obj == M->b)
-			M->b = obj->prev;
-		else
-			obj->next->prev = obj->prev;
-		obj->prev->next = obj->next;
-		M->d--;
-	}
-	free(obj);
+	size_t idx = S.M->d - 1 - n;
+	if (n > 0)
+		memmove(&S.M->data[idx], &S.M->data[idx + 1], n * sizeof(double));
+	S.M->d--;
 }
 
 #define CONVERTMAX 99
 static char *
-convertbase(unsigned long num, int base)
+convertbase(uint64_t num, int base, char *converted)
 {
-	static char converted[CONVERTMAX + 1];
-	static char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+	static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
 	int i;
 
 	converted[CONVERTMAX] = '\0';
@@ -131,34 +72,39 @@ convertbase(unsigned long num, int base)
 		converted[i] = digits[num % base];
 		num = num / base;
 	}
-	while (padcount > CONVERTMAX - 1 - i ) {
+	while (S.padcount > CONVERTMAX - 1 - i ) {
 		converted[i--] = digits[0];
 	}
 	return &converted[i+1];
 }
 
 static char *
-format_stack(char *sep, char *prompt)
+format_stack(const char *sep, const char *prompt)
 {
-	struct object *obj;
-	char *str, buf[100];
+	char *str, buf[100], cvt[CONVERTMAX + 1];
 	int len;
+	size_t i;
 
-	for (len = 0, obj = M->b; obj != NULL; obj = obj->prev) {
-		if (base == 10) {
-			snprintf(buf, sizeof(buf), "%.12g%s", obj->num, sep);
+	for (len = 0, i = 0; i < S.M->d; i++) {
+		if (S.base == 10) {
+			snprintf(buf, sizeof(buf), "%.12g%s", S.M->data[i], sep);
 			len += strlen(buf);
 		} else
-			len += strlen(convertbase(obj->num, base));
+			len += strlen(convertbase(S.M->data[i], S.base, cvt)) + strlen(sep);
 	}
 	str = calloc(1, len + strlen(prompt) + 1);
-	for (len = 0, obj = M->b; obj != NULL; obj = obj->prev) {
-		if (base == 10) {
-			len += sprintf(str + len, "%.12g%s", obj->num, sep);
-		} else
-			len += sprintf(str + len, "%s%s", convertbase(obj->num, base), sep);
+	if (str == NULL) {
+		perror("Error: calloc");
+		exit(1);
 	}
-	strcpy(str + len, prompt);
+	int total = len + strlen(prompt) + 1;
+	for (len = 0, i = 0; i < S.M->d; i++) {
+		if (S.base == 10) {
+			len += snprintf(str + len, total - len, "%.12g%s", S.M->data[i], sep);
+		} else
+			len += snprintf(str + len, total - len, "%s%s", convertbase(S.M->data[i], S.base, cvt), sep);
+	}
+	snprintf(str + len, total - len, "%s", prompt);
 	return str;
 }
 
@@ -176,7 +122,7 @@ eval(char *cmd)
 			cmd = prevcmd;
 		else {
 			strncpy(prevcmd, cmd, MAXSIZE-1);
-			cmd[MAXSIZE-1] = 0;
+			prevcmd[MAXSIZE-1] = '\0';
 		}
 	}
 
@@ -186,15 +132,15 @@ eval(char *cmd)
 		doingmacro = 0;
 	} else if ((cmdptr = findcmd(cmd)) != NULL) {
 		if (cmdptr->numargs == -1) {
-			if (top() == NULL)
+			if (S.M->d == 0)
 				numargs = 1;
-			else if (top()->num < 0)
+			else if (*topptr() < 0)
 				numargs = -1;
 			else
-				numargs = top()->num + 1;
+				numargs = *topptr() + 1;
 		} else
 			numargs = cmdptr->numargs;
-		if (numargs == -1 || M->d < numargs)
+		if (numargs == -1 || (long)S.M->d < numargs)
 			error(ERR_ARGC);
 		else
 			cmdptr->function();
@@ -220,7 +166,7 @@ process(char *str)
 			str++;
 		if (*str == '\0')
 			break;
-		for (x = 0; *str != '\0' && !isspace(*str); x++)
+		for (x = 0; *str != '\0' && !isspace(*str) && x < (int)sizeof(word) - 1; x++)
 			word[x] = *str++;
 		word[x] = '\0';
 		if ((suffix = strchr(word, BASECHAR)) != NULL) {
@@ -233,11 +179,13 @@ process(char *str)
 					*tmp++ = *tmp2++;
 			}
 			*tmp++ = *tmp2++;
-			/* XXX strol EINVAL if base>36 */
+			errno = 0;
 			if (word[0] == '-')
 				pushnum(strtol(word, NULL, atoi(suffix)));
 			else
 				pushnum(strtoul(word, NULL, atoi(suffix)));
+			if (errno == ERANGE)
+				error(ERR_RANGE);
 		} else if (isnum(word)) {
 			tmp = tmp2 = word;
 			while (*tmp2 != '\0') {
@@ -247,6 +195,7 @@ process(char *str)
 					*tmp++ = *tmp2++;
 			}
 			*tmp++ = *tmp2++;
+			errno = 0;
 			if (isnotfloat(word)) {
 				if (word[0] == '-')
 					pushnum(strtol(word, &suffix, 0));
@@ -254,13 +203,20 @@ process(char *str)
 					pushnum(strtoul(word, &suffix, 0));
 			} else
 				pushnum(strtod(word, &suffix));
-			if (*suffix != '\0')
+			if (errno == ERANGE)
+				error(ERR_RANGE);
+			else if (*suffix != '\0')
 				process(suffix);
 		} else {
-			for (x = repeat, repeat = 1; x > 0; x--) {
+			int reps = 1;
+			if (S.pending_repeat > 0) {
+				reps = S.pending_repeat;
+				S.pending_repeat = 0;
+			}
+			for (x = reps; x > 0; x--) {
 				eval(word);
-				if (stop) {
-					stop = 0;
+				if (S.stop) {
+					S.stop = 0;
 					return;
 				}
 			}
@@ -268,32 +224,54 @@ process(char *str)
 	}
 }
 
+static struct metastack *
+newstack(void) {
+	struct metastack *m = malloc(sizeof *m);
+	if (m == NULL) {
+		perror("Error: malloc");
+		exit(1);
+	}
+	m->data = malloc(STACK_INIT_CAP * sizeof(double));
+	if (m->data == NULL) {
+		perror("Error: malloc");
+		exit(1);
+	}
+	m->d = 0;
+	m->cap = STACK_INIT_CAP;
+	m->n = NULL;
+	return m;
+}
+
 static void
 pushstack(void) {
-	struct metastack *m = malloc(sizeof *m);
-	struct object *o = top();
-	m->n = M;
-	M = m;
-	if (o)
-		pushnum(o->num);
+	double val = 0;
+	int has_val = S.M->d > 0;
+	if (has_val)
+		val = *topptr();
+	struct metastack *m = newstack();
+	m->n = S.M;
+	S.M = m;
+	if (has_val)
+		pushnum(val);
 }
 
 static void
 freestack(struct metastack *m) {
-	struct object *o = NULL;
-	for(o = m->b; o; o = o->next)
-		free(o);
+	free(m->data);
 	free(m);
 }
 
 static void
 popstack(void) {
-	struct object *o = top();
-	if (M->n) {
-		struct metastack *m = M;
-		M = M->n;
-		if (o)
-			pushnum(o->num);
+	double val = 0;
+	int has_val = S.M->d > 0;
+	if (has_val)
+		val = *topptr();
+	if (S.M->n) {
+		struct metastack *m = S.M;
+		S.M = S.M->n;
+		if (has_val)
+			pushnum(val);
 		freestack(m);
 	}
 }
@@ -304,19 +282,16 @@ init(void) {
 			pops = { "pops", 0, popstack };
 	addcommand(&pushs);
 	addcommand(&pops);
-	srand(time(NULL));
+	srandom(time(NULL));
 	init_macros();
-	M = malloc(sizeof(*M));
-	M->t = NULL;
-	M->b = NULL;
-	M->d = 0;
-	M->n = NULL;
+	S.M = newstack();
 }
 
 int
 main(int argc, char *argv[])
 {
-	char *line, *prompt, *histfile;
+	char *line, *prompt;
+	char histfile[PATH_MAX] = "";
 
 	init();
 
@@ -337,8 +312,7 @@ main(int argc, char *argv[])
 	}
 
 	if (getenv("HOME")) {
-		histfile = malloc(strlen(getenv("HOME")) + 14);
-		sprintf(histfile, "%s/.rpn_history", getenv("HOME"));
+		snprintf(histfile, sizeof histfile, "%s/.rpn_history", getenv("HOME"));
 		linenoiseHistoryLoad(histfile);
 	}
 
@@ -348,7 +322,7 @@ main(int argc, char *argv[])
 	prompt = strdup("> ");
 	while ((line = linenoise(prompt)) != NULL) {
 		if (line[0] != '\0') {
-			if (histfile) {
+			if (histfile[0]) {
 				linenoiseHistoryAdd(line);
 				linenoiseHistorySave(histfile);
 			}
@@ -361,4 +335,3 @@ main(int argc, char *argv[])
 
 	return 0;
 }
-
